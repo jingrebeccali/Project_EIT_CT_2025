@@ -1,0 +1,10 @@
+numpy
+pandas
+nibabel
+scikit-image
+matplotlib
+seaborn
+trimesh
+plotly
+pymeshlab
+scipy
