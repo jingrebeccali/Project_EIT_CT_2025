@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import binary_closing, binary_fill_holes,label
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
-
-###import napari      # Uncomment if you have napari installed, but it is not necessary for the main functionality
+from shapely.geometry import Polygon, Point
+import napari      # Uncomment if you have napari installed, but it is not necessary for the main functionality
 
 ##Help function 
 def keep_largest_component(mask):
@@ -26,7 +26,7 @@ def keep_largest_component(mask):
     mask_clean = (labeled == largest)
     return mask_clean.astype(np.uint8)
 
-def extract_skin_mask(case_id, organ_parts, z):
+def Create_skin_mask(case_id):
 
     """
     INPUT:
@@ -40,7 +40,200 @@ def extract_skin_mask(case_id, organ_parts, z):
     - body: masque du corps,(en 3D)
     - ct: données de la CT, (en 3D)
     - mask_eit: la coupe en z de la CT avec  masques, pour EIT, (en 2D)
+    """         
+    base_dir=r'Data_set'   
+    ct_path=os.path.join(base_dir,case_id,"ct.nii.gz")
+    subject_path = os.path.join(base_dir, case_id)
+    organ_parts = [
+    "adrenal_gland_left.nii.gz",
+    "adrenal_gland_right.nii.gz",
+    "aorta.nii.gz",
+    "atrial_appendage_left.nii.gz",
+    "autochthon_left.nii.gz",
+    "autochthon_right.nii.gz",
+    "brachiocephalic_trunk.nii.gz",
+    "brachiocephalic_vein_left.nii.gz",
+    "brachiocephalic_vein_right.nii.gz",
+    "brain.nii.gz",
+    "clavicula_left.nii.gz",
+    "clavicula_right.nii.gz",
+    "colon.nii.gz",
+    "common_carotid_artery_left.nii.gz",
+    "common_carotid_artery_right.nii.gz",
+    "costal_cartilages.nii.gz",
+    "duodenum.nii.gz",
+    "esophagus.nii.gz",
+    "femur_left.nii.gz",
+    "femur_right.nii.gz",
+    "gallbladder.nii.gz",
+    "gluteus_maximus_left.nii.gz",
+    "gluteus_maximus_right.nii.gz",
+    "gluteus_medius_left.nii.gz",
+    "gluteus_medius_right.nii.gz",
+    "gluteus_minimus_left.nii.gz",
+    "gluteus_minimus_right.nii.gz",
+    "heart.nii.gz",
+    "hip_left.nii.gz",
+    "hip_right.nii.gz",
+    "humerus_left.nii.gz",
+    "humerus_right.nii.gz",
+    "iliac_artery_left.nii.gz",
+    "iliac_artery_right.nii.gz",
+    "iliac_vena_left.nii.gz",
+    "iliac_vena_right.nii.gz",
+    "iliopsoas_left.nii.gz",
+    "iliopsoas_right.nii.gz",
+    "inferior_vena_cava.nii.gz",
+    "kidney_cyst_left.nii.gz",
+    "kidney_cyst_right.nii.gz",
+    "kidney_left.nii.gz",
+    "kidney_right.nii.gz",
+    "liver.nii.gz",
+    "lung_lower_lobe_left.nii.gz",
+    "lung_lower_lobe_right.nii.gz",
+    "lung_middle_lobe_right.nii.gz",
+    "lung_upper_lobe_left.nii.gz",
+    "lung_upper_lobe_right.nii.gz",
+    "pancreas.nii.gz",
+    "portal_vein_and_splenic_vein.nii.gz",
+    "prostate.nii.gz",
+    "pulmonary_vein.nii.gz",
+    "rib_left_1.nii.gz",
+    "rib_left_2.nii.gz",
+    "rib_left_3.nii.gz",
+    "rib_left_4.nii.gz",
+    "rib_left_5.nii.gz",
+    "rib_left_6.nii.gz",
+    "rib_left_7.nii.gz",
+    "rib_left_8.nii.gz",
+    "rib_left_9.nii.gz",
+    "rib_left_10.nii.gz",
+    "rib_left_11.nii.gz",
+    "rib_left_12.nii.gz",
+    "rib_right_1.nii.gz",
+    "rib_right_2.nii.gz",
+    "rib_right_3.nii.gz",
+    "rib_right_4.nii.gz",
+    "rib_right_5.nii.gz",
+    "rib_right_6.nii.gz",
+    "rib_right_7.nii.gz",
+    "rib_right_8.nii.gz",
+    "rib_right_9.nii.gz",
+    "rib_right_10.nii.gz",
+    "rib_right_11.nii.gz",
+    "rib_right_12.nii.gz",
+    "sacrum.nii.gz",
+    "scapula_left.nii.gz",
+    "scapula_right.nii.gz",
+    "skull.nii.gz",
+    "small_bowel.nii.gz",
+    "spinal_cord.nii.gz",
+    "spleen.nii.gz",
+    "sternum.nii.gz",
+    "stomach.nii.gz",
+    "subclavian_artery_left.nii.gz",
+    "subclavian_artery_right.nii.gz",
+    "superior_vena_cava.nii.gz",
+    "thyroid_gland.nii.gz",
+    "trachea.nii.gz",
+    "urinary_bladder.nii.gz",
+    "vertebrae_C1.nii.gz",
+    "vertebrae_C2.nii.gz",
+    "vertebrae_C3.nii.gz",
+    "vertebrae_C4.nii.gz",
+    "vertebrae_C5.nii.gz",
+    "vertebrae_C6.nii.gz",
+    "vertebrae_C7.nii.gz",
+    "vertebrae_L1.nii.gz",
+    "vertebrae_L2.nii.gz",
+    "vertebrae_L3.nii.gz",
+    "vertebrae_L4.nii.gz",
+    "vertebrae_L5.nii.gz",
+    "vertebrae_S1.nii.gz",
+    "vertebrae_T1.nii.gz",
+    "vertebrae_T2.nii.gz",
+    "vertebrae_T3.nii.gz",
+    "vertebrae_T4.nii.gz",
+    "vertebrae_T5.nii.gz",
+    "vertebrae_T6.nii.gz",
+    "vertebrae_T7.nii.gz",
+    "vertebrae_T8.nii.gz",
+    "vertebrae_T9.nii.gz",
+    "vertebrae_T10.nii.gz",
+    "vertebrae_T11.nii.gz",
+    "vertebrae_T12.nii.gz"
+    ]
+
+    shape = None
+    mask_total = None
+
+    for part in organ_parts:
+        seg_path=os.path.join(subject_path, "segmentations",part)
+        if not os.path.exists(seg_path):
+            print(f"{seg_path} n'existe pas, on saute.")
+            continue
+        mask = nib.load(seg_path).get_fdata().astype(np.uint8)
+        if mask_total is None:
+            mask_total = np.zeros_like(mask)
+        mask_total = np.logical_or(mask_total, mask)
+
+
+    mask_total=mask_total.astype(np.uint8)
+
+    ct=nib.load(ct_path).get_fdata()
+    body_mask=(ct>-200)# we condider that the outside has small density, so we can use a threshold
+                            # could be adjusted based on the subject                        
+    body_mask=keep_largest_component(body_mask).astype(np.uint8)
+
+    body_mask_filled = binary_fill_holes(body_mask).astype(np.uint8)  #some zones inside the body may not be filled,in case we only work one or few organs
+    rest_of_body_mask_filled=(body_mask_filled & (~mask_total)).astype(np.uint8)
+    rest_of_body_mask_filled=binary_fill_holes(rest_of_body_mask_filled).astype(np.uint8)       #Same
+    outside_mask_filled=(~np.logical_or(rest_of_body_mask_filled,mask_total)).astype(np.uint8)
+
+
+    outside_mask_clean = keep_largest_component(outside_mask_filled)
+    rest_of_body_clean = (~np.logical_or(outside_mask_clean,mask_total)).astype(np.uint8)
+    body=np.logical_or(rest_of_body_clean,mask_total).astype(np.uint8)
+
+    return rest_of_body_clean,outside_mask_clean
+
+
+
+
+
+
+def Extrat_skin(case_id):
     """
+    INPUT:
+    - case_id: ID du cas,
+    OUTPUT:
+    -ct_skin: données de la CT qui ne contient que la peau, (en 3D), de type .nii.gz
+    - Enregistre le masque de la peau dans le dossier segmentations du cas.
+    """
+    base_dir=r'Data_set'   
+    ct_path=os.path.join(base_dir,case_id,"ct.nii.gz")
+    subject_path = os.path.join(base_dir, case_id,"segmentations")
+    output_path = os.path.join(subject_path, "skin.nii.gz")
+    ct = nib.load(ct_path).get_fdata()
+    header = ct.header.copy()
+    affine = nib.load(ct_path).affine
+
+
+    skin_mask,_= Create_skin_mask(case_id)
+    ct_skin = nib.Nifti1Image(skin_mask, affine, header=header)  # Create a new Nifti1Image with the skin mask
+    nib.save(ct_skin, output_path)
+    return ct_skin
+
+
+def Create_organ_mask(case_id,organ_parts):
+    """
+    INPUT:
+    - case_id: ID du cas,
+    - organ_parts: liste des parties de l'organe à considérer,
+    OUTPUT:
+    - mask_total: masque de l'organe, (en 3D)
+    """
+
     base_dir=r'Data_set'   
     ct_path=os.path.join(base_dir,case_id,"ct.nii.gz")
     subject_path = os.path.join(base_dir, case_id)
@@ -57,34 +250,61 @@ def extract_skin_mask(case_id, organ_parts, z):
         if mask_total is None:
             mask_total = np.zeros_like(mask)
         mask_total = np.logical_or(mask_total, mask)
+    return mask_total.astype(np.uint8)
 
 
+def Create_skin_mask_bis(case_id,organ_parts):
+    base_dir=r'Data_set'   
+    ct_path=os.path.join(base_dir,case_id,"ct.nii.gz")
+    subject_path = os.path.join(base_dir, case_id)
+
+    mask_total = Create_organ_mask(case_id,organ_parts)
+
+
+
+    mask_total=mask_total.astype(np.uint8)
 
     ct=nib.load(ct_path).get_fdata()
-
-    lungs_mask=mask_total.astype(np.uint8)
     body_mask=(ct>-300)# we condider that the outside has small density, so we can use a threshold
-                            # could be adjusted based on the subject
-
+                            # could be adjusted based on the subject                        
     body_mask=keep_largest_component(body_mask).astype(np.uint8)
 
     body_mask_filled = binary_fill_holes(body_mask).astype(np.uint8)  #some zones inside the body may not be filled,in case we only work one or few organs
-    rest_of_body_mask_filled=(body_mask_filled & (~lungs_mask)).astype(np.uint8)
+    rest_of_body_mask_filled=(body_mask_filled & (~mask_total)).astype(np.uint8)
     rest_of_body_mask_filled=binary_fill_holes(rest_of_body_mask_filled).astype(np.uint8)       #Same
-    outside_mask_filled=(~np.logical_or(rest_of_body_mask_filled,lungs_mask)).astype(np.uint8)
+    outside_mask_filled=(~np.logical_or(rest_of_body_mask_filled,mask_total)).astype(np.uint8)
 
 
     outside_mask_clean = keep_largest_component(outside_mask_filled)
-    rest_of_body_clean = (~np.logical_or(outside_mask_clean,lungs_mask)).astype(np.uint8)
-    body=np.logical_or(rest_of_body_clean,lungs_mask).astype(np.uint8)
+    rest_of_body_clean = (~np.logical_or(outside_mask_clean,mask_total)).astype(np.uint8)
+    body=np.logical_or(rest_of_body_clean,mask_total).astype(np.uint8)
+    return rest_of_body_clean,outside_mask_clean,mask_total
 
-    mask_eit = np.zeros_like(lungs_mask[:,:,z])
-    mask_eit[rest_of_body_clean[:,:,z] > 0] = 1
-    mask_eit[lungs_mask[:,:,z] > 0] = 2 
+    
 
-    return mask_eit, lungs_mask,rest_of_body_clean,outside_mask_clean,body,ct
 
-  
+
+
+
+def Create_mask_2D(masks,z):
+    """
+    INPUT:
+    - masks: liste de masques 3D à combiner, chaque masque doit être de la même taille,
+    - masks[i]: masque i, de forme (H,W,D), où H est la hauteur, W la largeur et D la profondeur,
+    - z: indice de la tranche à extraire (par exemple, 340 pour la tranche 340).
+    OUTPUT:
+    - mask_2D: masque 2D de la coupe en z,pour valeur value là où est le masque, 0 ailleurs.
+    """
+    mask_eit = np.zeros_like(masks[0][:,:,z])
+    for i,mask in zip(range(1,len(masks)+1),masks):
+        mask_eit[mask[:,:,z]>0]=i
+
+    return mask_eit.astype(np.uint8)
+
+
+
+
+
 
 def show_masks_eit(mask_eit):
     """""
@@ -97,35 +317,34 @@ def show_masks_eit(mask_eit):
     plt.imshow(mask_eit, interpolation='nearest')
     plt.title('Tranche EIT (mask_eit)')
     plt.axis('off')
-    cbar = plt.colorbar(ticks=[0,1,2])
-    cbar.ax.set_yticklabels(['extérieur','corps','poumons'])
+    
     plt.show()
 
 
 "this function only works with napari installed, which you probably struggle to do (see README.md file), so I commented it out"
-# def show_masks_3D(organ_mask,body_mask,outside_mask,ct, case_id):
-#     viewer = napari.Viewer()
-#     viewer.add_image(ct, name="CT of "+case_id, colormap="gray", contrast_limits=[-200, 500])
+def show_masks_3D(organ_mask,body_mask,outside_mask,ct_data, case_id):
+    viewer = napari.Viewer()
+    viewer.add_image(ct_data, name="CT of "+case_id, colormap="gray", contrast_limits=[-200, 500])
 
-#     viewer.add_labels(organ_mask, name='lungs mask', opacity=0.5)
-#     viewer.add_labels(body_mask, name='body mask Mask', opacity=0.5)
+    viewer.add_labels(organ_mask, name='lungs mask', opacity=0.5)
+    viewer.add_labels(body_mask, name='body mask Mask', opacity=0.5)
 
-#     viewer.add_labels(outside_mask, name='outside Mask', opacity=0.5)
-
-
-#     napari.run()
+    viewer.add_labels(outside_mask, name='outside Mask', opacity=0.5)
 
 
+    napari.run()
 
-def Electrodes_position(body_mask_2D,n_el):
+
+
+def Extract_contour(body_mask_2D):
     """
-    Extract the contour of the body mask and return the electrode positions.
+    Extract the contour of the body mask and returns a Shapely polygon of the body’s outer boundary,
 
     INPUT:
     - body_mask_2D: 2D array of the body mask, where the contour is extracted,
     - n_el: number of electrodes, which must be a multiple of 4.
     OUTPUT:
-    - p_electrodes: (n_el, 2) array of the coordinates of electrodes 
+    - body_poly: a Shapely polygon of the body’s outer boundary,
     """
     
 
@@ -141,18 +360,7 @@ def Electrodes_position(body_mask_2D,n_el):
     p_contour = np.vstack([(cnt[:,1] / (w-1))*2 - 1,1 - (cnt[:,0] / (h-1))*2]).T
 
     
-
-
-    # compute the total distance along the contour, then normalize
-    d = np.sqrt(((p_contour[1:] - p_contour[:-1])**2).sum(1))
-    s  = np.concatenate([[0], np.cumsum(d)])
-    s /= s[-1]
-    #interpolate to get n_el points: first on the segment [0,1](fx ad fy are funcions defined in [0,1]), then return the image of these points
-    fx = interp1d(s, p_contour[:,0], kind='linear')
-    fy = interp1d(s, p_contour[:,1], kind='linear')
-    s_el = np.linspace(0, 1, n_el, endpoint=False)
-
-
-    p_electrodes= np.vstack([fx(s_el), fy(s_el)]).T  # array of the coordinates of electrodes, of shape (n_el,2)
-
-    return p_electrodes
+    #build a Shapely polygon from p_contour
+    body_poly = Polygon(p_contour)
+    
+    return body_poly
