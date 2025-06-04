@@ -1,7 +1,13 @@
 from shapely.geometry import Polygon, Point
 import numpy as np
+import pyeit.eit.protocol as protocol
+import pyeit.eit.greit    as greit
+import pyeit.eit.bp       as bp
+from pyeit.visual.plot    import create_mesh_plot, create_plot
+from pyeit.mesh.shape import *
 
 
+##  -  Help functions for EIT  -  ##
 
 
 def make_fd_body(body_poly: Polygon):
@@ -67,3 +73,37 @@ def compute_element_labels(mask, nodes, elements):
     # retrieve the mask value at the pixel coordinates
     return mask[yi, xi]  # vecteur (Ne,)
 
+
+
+def set_protocol(n_el,dist_exc,step_meas):
+    """
+    Set the protocol for EIT measurements.
+    Returns a protocol object with the specified parameters.
+    
+    n_el =    # Number of electrodes
+    dist_exc  # Distance between excitation electrodes
+    step_meas # Step size for measurements
+
+    """
+    return protocol.create(n_el, dist_exc=dist_exc, step_meas=step_meas)
+
+def set_condu_eit(mesh,condu_body, condu_lung, labels_elems):
+    """
+    Set the conductivity values for the EIT mesh.
+    Returns an array of conductivity values for each element in the mesh.
+    mesh: EIT mesh object, of type pyeit.mesh.Mesh
+    condu_body: Conductivity value for the body
+    condu_lung: Conductivity value for the lung
+    labels_elems: Array of labels for each element in the mesh
+    Ne = labels_elems.shape[0]
+    Output:
+    perm: Array of conductivity values for each element in the mesh
+    perm0: Array of initial conductivity values (all ones)(Reference conductivity)
+    """
+    Ne=mesh.element.shape[0]
+    perm0 = np.ones(Ne)
+    perm = perm0.copy()
+    perm[labels_elems == 1] = condu_lung 
+    perm[labels_elems == 2] = condu_body  # to adapt later for simulations with other organs
+    mesh.perm = perm
+    return perm,perm0

@@ -254,9 +254,22 @@ def Create_organ_mask(case_id,organ_parts):
 
 
 def Create_skin_mask_bis(case_id,organ_parts):
+    """
+    INPUT:
+    - case_id: ID du cas,
+    - organ_parts: liste des parties de l'organe à considérer,
+    OUTPUT:
+    - rest_of_body_clean: masque du reste du corps,(en 3D)
+    - outside_mask_clean: masque de l'extérieur,(en 3D)
+    - mask_total: masque de l'organe, (en 3D)
+    -----La différence avec Create_skin_mask est que le masqque de la peau créé ici contient aussi les organes non inclus dans organ_parts,
+    """
+
+
     base_dir=r'Data_set'   
     ct_path=os.path.join(base_dir,case_id,"ct.nii.gz")
     subject_path = os.path.join(base_dir, case_id)
+    
 
     mask_total = Create_organ_mask(case_id,organ_parts)
 
@@ -265,6 +278,8 @@ def Create_skin_mask_bis(case_id,organ_parts):
     mask_total=mask_total.astype(np.uint8)
 
     ct=nib.load(ct_path).get_fdata()
+    print("hello")
+    print(ct.shape)
     body_mask=(ct>-300)# we condider that the outside has small density, so we can use a threshold
                             # could be adjusted based on the subject                        
     body_mask=keep_largest_component(body_mask).astype(np.uint8)
@@ -296,7 +311,7 @@ def Create_mask_2D(masks,z):
     - mask_2D: masque 2D de la coupe en z,pour valeur value là où est le masque, 0 ailleurs.
     """
     mask_eit = np.zeros_like(masks[0][:,:,z])
-    for i,mask in zip(range(1,len(masks)+1),masks):
+    for i,mask in zip(range(0,len(masks)),masks):
         mask_eit[mask[:,:,z]>0]=i
 
     return mask_eit.astype(np.uint8)
