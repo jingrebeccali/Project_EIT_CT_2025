@@ -2,7 +2,7 @@ clear all;
 
 format compact;
 
-addpath C:/Users/jingr/OneDrive/Documents/'EIT project'/distmesh-master/
+addpath distmesh-master/
  
 load ct_mat.mat;
 
