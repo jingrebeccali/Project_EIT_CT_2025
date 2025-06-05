@@ -7,7 +7,7 @@ https://github.com/ionhandshaker/distmesh/
 
 and add the path to the driver:
 
-'add path C:\Users\'%USERNAME%'\Dropbox\distmesh-master/' where DistMesh is located. 
+'add path distmesh-master/' where DistMesh is located. 
 
 2. The slices are then saved in the 'Slices_folder'.
 
