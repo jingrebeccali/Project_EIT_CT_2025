@@ -2,7 +2,7 @@ clear all;
 close all;
 
 format compact;
-addpath C:/Users/jingr/OneDrive/Documents/'EIT project'/distmesh-master/
+addpath distmesh-master/
  
 
 Slices_folder_name = ['Slices_folder'];
