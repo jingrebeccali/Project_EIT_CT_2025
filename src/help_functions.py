@@ -1,10 +1,11 @@
 from shapely.geometry import Polygon, Point
 import numpy as np
 import pyeit.eit.protocol as protocol
-import pyeit.eit.greit    as greit
-import pyeit.eit.bp       as bp
-from pyeit.visual.plot    import create_mesh_plot, create_plot
+
+
 from pyeit.mesh.shape import *
+from scipy.spatial import Delaunay, cKDTree
+import nibabel as nib
 
 
 ##  -  Help functions for EIT  -  ##
@@ -19,60 +20,60 @@ def make_fd_body(body_poly: Polygon):
        fd_body[i] > 0 if point i is outside body_poly.
        To be used directly in mesh.creaate, as the "fd" variable
     """
-    def fd_body(pts: np.ndarray):
-        """
-        pts: shape (M,2) each row = (x,y) in the same coordinate system as body_poly
-        returns:  array of length‐M of signed distances
-        """
-        if pts.ndim != 2 or pts.shape[1] != 2:
-            raise ValueError("fd_body(pts): pts must be shape (M,2).")
-        
-        signed_d = np.zeros(pts.shape[0], dtype=float)
-        for i, (x, y) in enumerate(pts):
-            p = Point(x, y)
-            d = p.distance(body_poly.exterior)  # always ≥ 0
-            if body_poly.contains(p):
-                signed_d[i] = -d
-            else:
-                signed_d[i] = +d
-        return signed_d
     
+    def fd_body(pts):
+        """return signed distance of polygon"""
+        pts_ = [Point(p) for p in pts]
+        # calculate signed distance
+        dist = [body_poly.exterior.distance(p) for p in pts_]
+        sign = np.sign([-int(body_poly.contains(p)) + 0.5 for p in pts_])
+
+        return sign * dist
+    
+
     return fd_body
 
-
-def compute_element_labels(mask, nodes, elements):
+def compute_element_labels_affine(mask,mesh, case_id, slice_index=None):
     """
-    Calculate for each triangle the label of the mask by taking the barycenter of the triangle
-    and converting it to PIXEL coordinates.
-    Returns an array of length the number of triangles, where each element is the label of the mask at the barycenter of the triangle.
+    Pour chaque centre de triangle (en mm), retourne le label du mask 2D.
+
+    - mask        : array 2D (H x W)
+    - centers_mm  : array (Ne,2) ou (Ne,3) de coordonnées réelles (mm)
+    - case_id     : pour charger Data_set/{case_id}/ct.nii.gz
+    - slice_index : si centers_mm est (Ne,2), donne le z (int) de coupe
+
+    Sortie :
+    - labels : array (Ne,) de labels issus de mask[y_vox, x_vox]
     """
-    
-    H, W = mask.shape
-    Ne = elements.shape[0]
+    centers_mm=mesh.elem_centers
+    # 1) Charge l'affine et son inverse
+    img    = nib.load(f"Data_set/{case_id}/ct.nii.gz")
+    inv_aff = np.linalg.inv(img.affine)
 
-    # get the coordinates of the nodes of each triangle
-    pts_tri = nodes[elements, :2]  # shape (Ne, 3, 2)
+    # 2) Construis la matrice homogène (N,4)
+    N = centers_mm.shape[0]
+    ones = np.ones((N,1))
 
-    # obtain the barycenter of each triangle
-    centers = pts_tri.mean(axis=1)  # shape (Ne, 2)
+    if centers_mm.shape[1] == 3:
+        # on a déjà (x,y,z)
+        homog = np.hstack([centers_mm, ones])      # (N,4)
+    elif centers_mm.shape[1] == 2:
+        if slice_index is None:
+            raise ValueError("slice_index requis lorsque centers_mm est (N,2)")
+        zs = np.full((N,1), slice_index)
+        homog = np.hstack([centers_mm, zs, ones])  # (N,4)
+    else:
+        raise ValueError("centers_mm doit être (N,2) ou (N,3)")
 
-    # convert the barycenter coordinates to pixel coordinates
-    x_world = centers[:, 0]
-    y_world = centers[:, 1]
+    # 3) Applique l'inverse d'affine pour retomber en voxels
+    vox = homog.dot(inv_aff.T)[:, :3]  # (i,j,k) flottants
 
-    u = ((x_world + 1.0) * 0.5) * (W - 1)
-    v = (   1.0 - (y_world + 1.0) * 0.5) * (H - 1)
+    # 4) Round, clip, et extrait le mask
+    # note : mask[y, x], donc voxel[:,1]→row, voxel[:,0]→col
+    xi = np.clip(np.round(vox[:,0]).astype(int), 0, mask.shape[1]-1)
+    yi = np.clip(np.round(vox[:,1]).astype(int), 0, mask.shape[0]-1)
 
-    xi = np.round(u).astype(int)
-    yi = np.round(v).astype(int)
-
-    # clip the pixel coordinates to be within the mask bounds
-    xi = np.clip(xi, 0, W - 1)
-    yi = np.clip(yi, 0, H - 1)
-
-    # retrieve the mask value at the pixel coordinates
-    return mask[yi, xi]  # vecteur (Ne,)
-
+    return mask[yi, xi]
 
 
 def set_protocol(n_el,dist_exc,step_meas):
@@ -85,9 +86,9 @@ def set_protocol(n_el,dist_exc,step_meas):
     step_meas # Step size for measurements
 
     """
-    return protocol.create(n_el, dist_exc=dist_exc, step_meas=step_meas)
+    return protocol.create(n_el, dist_exc=dist_exc, step_meas=step_meas,parser_meas="std")
 
-def set_condu_eit(mesh,condu_body, condu_lung, labels_elems):
+def set_condu_eit(mask2d,mesh,case_id,slice_index,len_organs):
     """
     Set the conductivity values for the EIT mesh.
     Returns an array of conductivity values for each element in the mesh.
@@ -95,15 +96,93 @@ def set_condu_eit(mesh,condu_body, condu_lung, labels_elems):
     condu_body: Conductivity value for the body
     condu_lung: Conductivity value for the lung
     labels_elems: Array of labels for each element in the mesh
-    Ne = labels_elems.shape[0]
+    Ne = labels_elems.shape[0](number of triangles in the mesh)
     Output:
     perm: Array of conductivity values for each element in the mesh
     perm0: Array of initial conductivity values (all ones)(Reference conductivity)
     """
+    tri_labels=compute_element_labels_affine(mask2d,mesh,case_id, slice_index=slice_index)
     Ne=mesh.element.shape[0]
-    perm0 = np.ones(Ne)
-    perm = perm0.copy()
-    perm[labels_elems == 1] = condu_lung 
-    perm[labels_elems == 2] = condu_body  # to adapt later for simulations with other organs
-    mesh.perm = perm
-    return perm,perm0
+    
+    perm= np.ones(Ne)
+
+    # applique les valeurs
+    for j in range(1,69):
+
+        perm[tri_labels==j] = j
+    return perm
+
+
+
+
+def compute_node_labels_affine(mask, nodes, case_id, slice_index):
+    """
+    Pour chaque nœud (en mm), retourne le label du mask 2D.
+
+    - mask       : array 2D (H x W)
+    - nodes_mm   : array (Nnodes,2) de coords réelles (mm)
+    - case_id    : pour charger Data_set/{case_id}/ct.nii.gz
+    - slice_index: indice de coupe Z
+
+    Sortie :
+    - labels_nœuds : array (Nnodes,) de labels issus de mask[row, col]
+    """
+    # 1) Charge l'affine et son inverse
+    img     = nib.load(f"Data_set/{case_id}/ct.nii.gz")
+    inv_aff = np.linalg.inv(img.affine)
+    nodes_mm = nodes[:, :2]
+    # 2) Construit les coords homogènes (Nnodes,4)
+    N = nodes_mm.shape[0]
+    ones = np.ones((N,1))
+    zs   = np.full((N,1), slice_index)
+    homog = np.hstack([nodes_mm, zs, ones])  # (N,4)
+
+    # 3) Mappe en voxels flottants puis quantifie
+    vox = homog.dot(inv_aff.T)[:, :3]        # (i,j,k) floats
+    xi  = np.clip(np.round(vox[:,0]).astype(int), 0, mask.shape[1]-1)
+    yi  = np.clip(np.round(vox[:,1]).astype(int), 0, mask.shape[0]-1)
+
+    # 4) indexation mask[y, x]
+    return mask[yi, xi]
+
+
+
+def set_condu_nodes(mask, mesh,case_id, slice_index,len_organs):
+    """
+    Retourne un vecteur de conductivité par nœud (taille mesh.n_nodes),
+    à partir du masque et des valeurs pour poumon et corps.
+    """
+    # récupère les labels 0/1/2 pour chaque nœud
+    nodes_mm     = mesh.node[:, :2]  # (Nnodes,2)
+    node_labels  = compute_node_labels_affine(mask, nodes_mm, case_id, slice_index)
+    Nnodes       = mesh.node.shape[0]
+
+    # initialise à 1 (milieu de référence)
+    perm_nodes = np.ones(Nnodes)
+
+    # applique les valeurs
+    for j in range(1,69):
+
+        perm_nodes[node_labels==j] = j
+
+    return perm_nodes
+
+
+
+
+
+
+
+
+
+
+
+def sample_electrodes(poly, n_el):
+    perim = poly.exterior.length
+    dists = np.linspace(0, perim, num=n_el, endpoint=False)
+    return np.array([poly.exterior.interpolate(d).coords[0] for d in dists])
+
+def find_closest_node_indices(nodes, pts):
+    tree = cKDTree(nodes)
+    _, idx = tree.query(pts)
+    return idx

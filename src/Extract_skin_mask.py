@@ -1,8 +1,5 @@
 import nibabel as nib
 import numpy as np
-from scipy.ndimage import zoom
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from scipy.interpolate import interp1d
 from skimage import measure
 
 import matplotlib.pyplot as plt
@@ -195,7 +192,7 @@ def Create_skin_mask(case_id):
     rest_of_body_clean = (~np.logical_or(outside_mask_clean,mask_total)).astype(np.uint8)
     body=np.logical_or(rest_of_body_clean,mask_total).astype(np.uint8)
 
-    return rest_of_body_clean,outside_mask_clean
+    return rest_of_body_clean,outside_mask_clean,ct
 
 
 
@@ -214,15 +211,16 @@ def Extrat_skin(case_id):
     ct_path=os.path.join(base_dir,case_id,"ct.nii.gz")
     subject_path = os.path.join(base_dir, case_id,"segmentations")
     output_path = os.path.join(subject_path, "skin.nii.gz")
-    ct = nib.load(ct_path).get_fdata()
+    ct=nib.load(ct_path)
+    ct_data = ct.get_fdata()
     header = ct.header.copy()
     affine = nib.load(ct_path).affine
 
 
-    skin_mask,_= Create_skin_mask(case_id)
+    skin_mask,outside_mask_clean,_= Create_skin_mask(case_id)
     ct_skin = nib.Nifti1Image(skin_mask, affine, header=header)  # Create a new Nifti1Image with the skin mask
     nib.save(ct_skin, output_path)
-    return ct_skin
+    return skin_mask,outside_mask_clean
 
 
 def Create_organ_mask(case_id,organ_parts):
@@ -244,13 +242,15 @@ def Create_organ_mask(case_id,organ_parts):
     for part in organ_parts:
         seg_path=os.path.join(subject_path, "segmentations",part)
         if not os.path.exists(seg_path):
-            print(f"{seg_path} n'existe pas, on saute.")
+            print(f"{seg_path} n'existe pas, on saute")
             continue
         mask = nib.load(seg_path).get_fdata().astype(np.uint8)
         if mask_total is None:
             mask_total = np.zeros_like(mask)
         mask_total = np.logical_or(mask_total, mask)
     return mask_total.astype(np.uint8)
+
+
 
 
 def Create_skin_mask_bis(case_id,organ_parts):
@@ -277,10 +277,12 @@ def Create_skin_mask_bis(case_id,organ_parts):
 
     mask_total=mask_total.astype(np.uint8)
 
-    ct=nib.load(ct_path).get_fdata()
-    print("hello")
-    print(ct.shape)
-    body_mask=(ct>-300)# we condider that the outside has small density, so we can use a threshold
+    ct=nib.load(ct_path)
+    ct_data=ct.get_fdata()
+
+    affine=nib.load(ct_path).affine
+    
+    body_mask=(ct_data>-300)# we condider that the outside has small density, so we can use a threshold
                             # could be adjusted based on the subject                        
     body_mask=keep_largest_component(body_mask).astype(np.uint8)
 
@@ -290,9 +292,12 @@ def Create_skin_mask_bis(case_id,organ_parts):
     outside_mask_filled=(~np.logical_or(rest_of_body_mask_filled,mask_total)).astype(np.uint8)
 
 
+
     outside_mask_clean = keep_largest_component(outside_mask_filled)
     rest_of_body_clean = (~np.logical_or(outside_mask_clean,mask_total)).astype(np.uint8)
-    body=np.logical_or(rest_of_body_clean,mask_total).astype(np.uint8)
+
+    
+    # body=np.logical_or(rest_of_body_clean,mask_total).astype(np.uint8)
     return rest_of_body_clean,outside_mask_clean,mask_total
 
     
@@ -315,10 +320,6 @@ def Create_mask_2D(masks,z):
         mask_eit[mask[:,:,z]>0]=i
 
     return mask_eit.astype(np.uint8)
-
-
-
-
 
 
 def show_masks_eit(mask_eit):
@@ -357,7 +358,6 @@ def Extract_contour(body_mask_2D):
 
     INPUT:
     - body_mask_2D: 2D array of the body mask, where the contour is extracted,
-    - n_el: number of electrodes, which must be a multiple of 4.
     OUTPUT:
     - body_poly: a Shapely polygon of the body’s outer boundary,
     """
@@ -374,7 +374,7 @@ def Extract_contour(body_mask_2D):
 
     p_contour = np.vstack([(cnt[:,1] / (w-1))*2 - 1,1 - (cnt[:,0] / (h-1))*2]).T
 
-    
+
     #build a Shapely polygon from p_contour
     body_poly = Polygon(p_contour)
     
