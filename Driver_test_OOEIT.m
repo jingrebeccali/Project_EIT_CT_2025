@@ -11,13 +11,32 @@ libDir    = 'meshes_mat';
 % nom du fichier référence (vous pouvez aussi prendre le premier trouvé automatiquement)
 refFile   = 's0011_mesh.mat';  
 
+ %%%%%%%%% conductivity values, in order of :
+ %%%%%%%%% Soft_tissue,lungs,heart,aorta,trachea,esophagus,ribs,vertebraes,scapula,
 
+b = [0.3, 0.15, 0.01, 0.2, 0.6, 0.8, 0.1, 0.25, 0.05];  
+
+ %%%%%%%%%  (TODO : need get the list of organs present in the slice from
+ %%%%%%%%% python)
 
 %% charge reference 
 % —> mesh + signal
 S = load(fullfile(refDir,refFile));
 g_ref    = S.g;      H_ref = S.H+1;        % +1 si vos H étaient 0-based  
 sig_ref  = S.sigma;  
+
+
+c = zeros(size(sig_ref)); % on prépare le vecteur résultat
+
+for i = 1:9
+    % on trouve toutes les positions où v == i
+    idx = (sig_ref == i);
+    % et on y place b(i)
+    c(idx) = b(i);
+end
+
+sig_ref=c;
+
 if size(g_ref,2)>2
   g_ref = g_ref(:,1:2);      %get x,y only  from mesh.nodes of pyeit
 end
@@ -34,6 +53,7 @@ for L = 1:n_el
 end
 
 
+
 % build forward solver
 fmesh_ref = ForwardMesh1st(g_ref,H_ref,E_ref);
 solver_ref = EITFEM(fmesh_ref);
@@ -47,7 +67,7 @@ Imeas_ref = solver_ref.SolveForwardVec(sig_ref);
 %%%%%%%%%%%%  uncomment if you want to remove some measurments like in your
 %%%%%%%%%%%%  driver.Then have to cuncomment this part on line 107 as well
 %%%%%%%%%%%%  %%%
-%validIdx = ~isnan(Imeas_ref);
+% validIdx = ~isnan(Imeas_ref);
 % for n=0:fmesh_ref.nEl-1
 %   block = Imeas_ref(1+n*fmesh_ref.nEl : (n+1)*fmesh_ref.nEl);
 %   ii = find(block<0);
@@ -83,7 +103,23 @@ for k=1:nF
   
   S = load(fullfile(libDir,files(k).name));
   g = S.g; H = S.H+1;  sig = S.sigma;
+
+  c = zeros(size(sig)); % on prépare le vecteur résultat
+
+  for i = 1:9
+      % on trouve toutes les positions où v == i
+      idx = (sig_ref == i);
+      % et on y place b(i)
+      c(idx) = b(i);
+  end
+
+  sig=c;
+
+
+
+
   fn = fieldnames(S);
+
 
   if size(g,2)>2
     g = g(:,1:2);      %get x,y from mesh.nodes of pyeit
@@ -130,6 +166,16 @@ for i=1:3
   k = best(i);
   S = load(fullfile(libDir,files(k).name));
   g = S.g;   H = S.H+1;   sig = S.sigma;
+
+  c = zeros(size(sig)); % on prépare le vecteur résultat
+
+  for i = 1:9
+      % on trouve toutes les positions où v == i
+      idx = (sig == i);
+      % et on y place b(i)
+      c(idx) = b(i);
+  end
+  sig=c
   figure('Name',sprintf('Top %d : %s',i,files(k).name),'Position',[200 200 600 800]);
   subplot(2,1,1);
     plot(allIm{k},'-o','LineWidth',1.5);
