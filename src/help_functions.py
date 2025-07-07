@@ -8,7 +8,7 @@ from scipy.spatial import Delaunay, cKDTree
 import nibabel as nib
 
 
-##  -  Help functions for EIT  -  ##
+## Help functions for EIT##
 
 
 def make_fd_body(body_poly: Polygon):
@@ -33,48 +33,50 @@ def make_fd_body(body_poly: Polygon):
 
     return fd_body
 
-def compute_element_labels_affine(mask,mesh, case_id, slice_index=None):
+def compute_element_labels_affine(mask, mesh, case_id, slice_index=None):
     """
     Pour chaque centre de triangle (en mm), retourne le label du mask 2D.
 
     - mask        : array 2D (H x W)
-    - centers_mm  : array (Ne,2) ou (Ne,3) de coordonnées réelles (mm)
+    - mesh.elem_centers : array (Ne,2) en coordonnées réelles (mm)
     - case_id     : pour charger Data_set/{case_id}/ct.nii.gz
-    - slice_index : si centers_mm est (Ne,2), donne le z (int) de coupe
+    - slice_index : si elem_centers est (Ne,2), donne le z (int) de coupe
 
     Sortie :
-    - labels : array (Ne,) de labels issus de mask[y_vox, x_vox]
+    - labels : array (Ne,) de labels issus de mask[row, col]
     """
-    centers_mm=mesh.elem_centers
-    # 1) Charge l'affine et son inverse
-    img    = nib.load(f"Data_set/{case_id}/ct.nii.gz")
-    inv_aff = np.linalg.inv(img.affine)
+    # 1) Récupère les centres en mm
+    centers = mesh.elem_centers  # shape (Ne,2)
 
-    # 2) Construis la matrice homogène (N,4)
-    N = centers_mm.shape[0]
+    # 2) Construis les homogènes (Ne,4)
+    N = centers.shape[0]
     ones = np.ones((N,1))
-
-    if centers_mm.shape[1] == 3:
-        # on a déjà (x,y,z)
-        homog = np.hstack([centers_mm, ones])      # (N,4)
-    elif centers_mm.shape[1] == 2:
+    if centers.shape[1] == 2:
         if slice_index is None:
-            raise ValueError("slice_index requis lorsque centers_mm est (N,2)")
+            raise ValueError("slice_index requis si elem_centers est (N,2)")
         zs = np.full((N,1), slice_index)
-        homog = np.hstack([centers_mm, zs, ones])  # (N,4)
+        homog = np.hstack([centers, zs, ones])
+    elif centers.shape[1] == 3:
+        homog = np.hstack([centers, ones])
     else:
-        raise ValueError("centers_mm doit être (N,2) ou (N,3)")
+        raise ValueError("elem_centers doit être (N,2) ou (N,3)")
 
-    # 3) Applique l'inverse d'affine pour retomber en voxels
-    vox = homog.dot(inv_aff.T)[:, :3]  # (i,j,k) flottants
+    # 3) Applique l’inverse de l’affine du CT pour retomber en voxels
+    img     = nib.load(f"Data_set/{case_id}/ct.nii.gz")
+    inv_aff = np.linalg.inv(img.affine)
+    vox     = homog.dot(inv_aff.T)  # (Ne,4) -> (i,j,k,1)
+    xi      = np.round(vox[:, 0]).astype(int)
+    yi      = np.round(vox[:, 1]).astype(int)
 
-    # 4) Round, clip, et extrait le mask
-    # note : mask[y, x], donc voxel[:,1]→row, voxel[:,0]→col
-    xi = np.clip(np.round(vox[:,0]).astype(int), 0, mask.shape[1]-1)
-    yi = np.clip(np.round(vox[:,1]).astype(int), 0, mask.shape[0]-1)
+    # 4) Comme imshow(mask) met l’origine en haut à gauche,
+    #    il faut inverser l’indice de ligne :
+    rows = mask.shape[0] - 1 - yi
+    cols = xi
 
-    return mask[yi, xi]
-
+    # 5) Clip et retourne
+    rows = np.clip(rows, 0, mask.shape[0]-1)
+    cols = np.clip(cols, 0, mask.shape[1]-1)
+    return mask[rows, cols]
 
 def set_protocol(n_el,dist_exc,step_meas):
     """
@@ -107,44 +109,54 @@ def set_condu_eit(mask2d,mesh,case_id,slice_index,len_organs):
     perm= np.ones(Ne)
 
     # applique les valeurs
-    for j in range(1,69):
+    for j in range(1,150):
 
         perm[tri_labels==j] = j
     return perm
-
-
-
 
 def compute_node_labels_affine(mask, nodes, case_id, slice_index):
     """
     Pour chaque nœud (en mm), retourne le label du mask 2D.
 
     - mask       : array 2D (H x W)
-    - nodes_mm   : array (Nnodes,2) de coords réelles (mm)
+    - nodes      : array (Nnodes,2) ou (Nnodes,3) coords réelles (mm)
     - case_id    : pour charger Data_set/{case_id}/ct.nii.gz
-    - slice_index: indice de coupe Z
+    - slice_index: indice de coupe Z, requis si nodes.shape[1]==2
 
     Sortie :
     - labels_nœuds : array (Nnodes,) de labels issus de mask[row, col]
     """
-    # 1) Charge l'affine et son inverse
+    # 1) Récupère l’affine inverse du CT
     img     = nib.load(f"Data_set/{case_id}/ct.nii.gz")
     inv_aff = np.linalg.inv(img.affine)
+
+    # 2) Prépare les coordonnées homogènes (Nnodes,4)
     nodes_mm = nodes[:, :2]
-    # 2) Construit les coords homogènes (Nnodes,4)
     N = nodes_mm.shape[0]
     ones = np.ones((N,1))
-    zs   = np.full((N,1), slice_index)
-    homog = np.hstack([nodes_mm, zs, ones])  # (N,4)
+    if nodes.shape[1] == 2:
+        zs = np.full((N,1), slice_index)
+        homog = np.hstack([nodes_mm, zs, ones])
+    elif nodes.shape[1] == 3:
+        homog = np.hstack([nodes_mm, nodes[:,2:3], ones])
+    else:
+        raise ValueError("nodes must be (N,2) or (N,3)")
 
-    # 3) Mappe en voxels flottants puis quantifie
-    vox = homog.dot(inv_aff.T)[:, :3]        # (i,j,k) floats
-    xi  = np.clip(np.round(vox[:,0]).astype(int), 0, mask.shape[1]-1)
-    yi  = np.clip(np.round(vox[:,1]).astype(int), 0, mask.shape[0]-1)
+    # 3) Passage en voxels floating
+    vox = homog.dot(inv_aff.T)  # shape (N,4)
+    xi  = np.round(vox[:, 0]).astype(int)
+    yi  = np.round(vox[:, 1]).astype(int)
 
-    # 4) indexation mask[y, x]
-    return mask[yi, xi]
+    # 4) Inversion de l’axe Y pour matcher imshow(origin='lower')
+    rows = mask.shape[0] - 1 - yi
+    cols = xi
 
+    # 5) Clip pour rester dans l’image
+    rows = np.clip(rows, 0, mask.shape[0]-1)
+    cols = np.clip(cols, 0, mask.shape[1]-1)
+
+    # 6) Extraction
+    return mask[rows, cols]
 
 
 def set_condu_nodes(mask, mesh,case_id, slice_index,len_organs):
@@ -161,7 +173,7 @@ def set_condu_nodes(mask, mesh,case_id, slice_index,len_organs):
     perm_nodes = np.ones(Nnodes)
 
     # applique les valeurs
-    for j in range(1,69):
+    for j in range(1,150):
 
         perm_nodes[node_labels==j] = j
 

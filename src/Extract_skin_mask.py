@@ -9,6 +9,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "s
 from shapely.geometry import Polygon, Point
 import napari      # Uncomment if you have napari installed, but it is not necessary for the main functionality
 
+from scipy.ndimage import binary_closing, binary_fill_holes,binary_opening
+
+
+
 ##Help function 
 def keep_largest_component(mask):
     """
@@ -223,33 +227,83 @@ def Extrat_skin(case_id):
     return skin_mask,outside_mask_clean
 
 
-def Create_organ_mask(case_id,organ_parts):
+# def Create_organ_mask(case_id,organ_parts):
+#     """
+#     INPUT:
+#     - case_id: ID du cas,
+#     - organ_parts: liste des parties de l'organe à considérer,
+#     OUTPUT:
+#     - mask_total: masque de l'organe, (en 3D)
+#     """
+
+#     base_dir=r'Data_set'   
+#     ct_path=os.path.join(base_dir,case_id,"ct.nii.gz")
+#     subject_path = os.path.join(base_dir, case_id)
+
+#     shape = None
+#     mask_total = None
+
+#     for part in organ_parts:
+#         seg_path=os.path.join(subject_path, "segmentations",part)
+#         data=nib.load(seg_path).get_fdata()
+#         if not os.path.exists(seg_path):
+#             print(f"{seg_path} n'existe pas, on saute")
+#             continue
+#         if not np.any(data > 0):
+#             # return None or raise a controlled exception
+#             raise ValueError("Empty segmentation (no organ present)")
+#         mask =data.astype(np.uint8)
+#         if mask_total is None:
+#             mask_total = np.zeros_like(mask)
+#         mask_total = np.logical_or(mask_total, mask)
+#     return mask_total.astype(np.uint8)
+
+
+def Create_organ_mask(case_id, organ_parts):
     """
+    Crée un masque 3D pour un organe à partir de ses parties,  
+    en ne déclenchant une erreur QUE si TOUTES les parties sont vides.
+
     INPUT:
-    - case_id: ID du cas,
-    - organ_parts: liste des parties de l'organe à considérer,
+     - case_id     : ID du cas
+     - organ_parts : liste des fichiers de segmentation (.nii.gz)
+     - z_min, z_max: indices pour recadrer en Z
+
     OUTPUT:
-    - mask_total: masque de l'organe, (en 3D)
+     - mask_total  : masque 3D (uint8) fusionnant toutes les parties non-vides
+
+    Lève ValueError si aucun voxel trouvé pour TOUTES les parties.
     """
+    base_dir    = "Data_set"
+    subject_dir = os.path.join(base_dir, case_id, "segmentations")
 
-    base_dir=r'Data_set'   
-    ct_path=os.path.join(base_dir,case_id,"ct.nii.gz")
-    subject_path = os.path.join(base_dir, case_id)
-
-    shape = None
-    mask_total = None
+    mask_total     = None
+    any_part_found = False
 
     for part in organ_parts:
-        seg_path=os.path.join(subject_path, "segmentations",part)
+        seg_path = os.path.join(subject_dir, part)
         if not os.path.exists(seg_path):
-            print(f"{seg_path} n'existe pas, on saute")
+            # fichier absent, on ignore
             continue
-        mask = nib.load(seg_path).get_fdata().astype(np.uint8)
-        if mask_total is None:
-            mask_total = np.zeros_like(mask)
-        mask_total = np.logical_or(mask_total, mask)
-    return mask_total.astype(np.uint8)
 
+        seg_vol = nib.load(seg_path).get_fdata()
+        # recadrage Z
+        seg_crop = seg_vol
+
+        if np.any(seg_crop > 0):
+            any_part_found = True
+            part_mask = (seg_crop > 0).astype(np.uint8)
+            if mask_total is None:
+                # initialisation à la forme de la première partie valide
+                mask_total = np.zeros_like(part_mask, dtype=np.uint8)
+            # fusion OR
+            mask_total = np.logical_or(mask_total, part_mask)
+
+    if not any_part_found:
+        # aucune partie n'a de voxel : on déclenche l'erreur
+        raise ValueError(f"Empty segmentation for all parts of organ ({organ_parts}) in case {case_id}")
+
+    return mask_total.astype(np.uint8)
 
 
 
@@ -288,14 +342,27 @@ def Create_skin_mask_bis(case_id,organ_parts):
 
     body_mask_filled = binary_fill_holes(body_mask).astype(np.uint8)  #some zones inside the body may not be filled,in case we only work one or few organs
     rest_of_body_mask_filled=(body_mask_filled & (~mask_total)).astype(np.uint8)
+    radius =1
+    size = 2 * radius + 1  # 9
+
+    # créer les grilles de coordonnées centrées en 0
+    # np.ogrid est plus mémoire-efficace que meshgrid pour ce cas
+    Z, Y, X = np.ogrid[-radius:radius+1, -radius:radius+1, -radius:radius+1]
+
+    # masque sphérique : inclusion si distance <= radius
+    structure = (X**2 + Y**2 + Z**2) <= radius**2
+
+    rest_of_body_mask_filled = binary_closing(rest_of_body_mask_filled, structure=structure).astype(np.uint8)  #Ferme les trous
     rest_of_body_mask_filled=binary_fill_holes(rest_of_body_mask_filled).astype(np.uint8)       #Same
     outside_mask_filled=(~np.logical_or(rest_of_body_mask_filled,mask_total)).astype(np.uint8)
 
 
 
     outside_mask_clean = keep_largest_component(outside_mask_filled)
+    outside_mask_clean =binary_opening(outside_mask_clean, structure=structure).astype(np.uint8)  #Ferme les trous
     rest_of_body_clean = (~np.logical_or(outside_mask_clean,mask_total)).astype(np.uint8)
 
+    
     
     # body=np.logical_or(rest_of_body_clean,mask_total).astype(np.uint8)
     return rest_of_body_clean,outside_mask_clean,mask_total
@@ -318,7 +385,8 @@ def Create_mask_2D(masks,z):
     mask_eit = np.zeros_like(masks[0][:,:,z])
     for i,mask in zip(range(0,len(masks)),masks):
         mask_eit[mask[:,:,z]>0]=i
-
+    # mask_closed = binary_closing(mask_eit, structure=disk(3))
+    # mask_filled = binary_fill_holes(mask_closed)
     return mask_eit.astype(np.uint8)
 
 
@@ -350,32 +418,55 @@ def show_masks_3D(organ_mask,body_mask,outside_mask,ct_data, case_id):
 
     napari.run()
 
+from scipy.ndimage import binary_closing, binary_fill_holes
+from skimage import measure
+from shapely.geometry import Polygon
+from skimage.morphology import disk
 
-
-def Extract_contour(body_mask_2D):
+def Extract_contour(
+    mask2d: np.ndarray,
+    closing_radius: int = 5,
+    opening_radius: int = 3,
+    simplify_tol: float = 0.01,
+):
     """
-    Extract the contour of the body mask and returns a Shapely polygon of the body’s outer boundary,
+    Extrait le contour extérieur du 'body total' (mask2d==1) uniquement.
 
-    INPUT:
-    - body_mask_2D: 2D array of the body mask, where the contour is extracted,
-    OUTPUT:
-    - body_poly: a Shapely polygon of the body’s outer boundary,
+    - mask2d : 2D array int
+        0 = fond, 1 = corps total, puis >=2 = organes internes
+    - closing_radius : rayon en px pour enlever les troux
+    - opening_radius : rayon en px pour lisser les petits pics
+
+    Retourne un shapely.Polygon CCW en en coord normalisées.
     """
-    
+    # 1) Isolation du corps total
+    body = (mask2d == 1)
 
+    # 2) Combler les trous éventuels
+    body = binary_fill_holes(body)
 
+    # 3) Closing puis Opening pour lisser
+    struct_c = disk(closing_radius)
+    body = binary_closing(body, structure=struct_c)
+    struct_o = disk(opening_radius)
+    body = binary_opening(body, structure=struct_o)
 
-    #this returns a list of (N,2) arrays of [row, col] points, wich determin the contour, need to see level parameter later
-    contours = measure.find_contours(body_mask_2D, level=0.5)
+    # 4) Extraction des contours
+    contours = measure.find_contours(body.astype(float), level=0.5)
+    if not contours:
+        raise RuntimeError("Aucun contour trouvé pour mask2d==1 !")
     cnt = max(contours, key=lambda c: c.shape[0])
 
-    #  convert pixel coordinates [row, col] to Cartesian coordinates in [-1,1]
-    h, w = body_mask_2D.shape
+    # 5) Pixel→coordonnées normalisées [-1,1]
+    h, w = mask2d.shape
+    xs = (cnt[:,1] / (w-1)) * 2 - 1
+    ys = 1 - (cnt[:,0] / (h-1)) * 2
 
-    p_contour = np.vstack([(cnt[:,1] / (w-1))*2 - 1,1 - (cnt[:,0] / (h-1))*2]).T
+    poly = Polygon(np.vstack([xs, ys]).T)
 
+    # 6) Simplification & orientation
+    poly = poly.simplify(simplify_tol, preserve_topology=True)
+    if not poly.exterior.is_ccw:
+        poly = Polygon(poly.exterior.coords[::-1])
 
-    #build a Shapely polygon from p_contour
-    body_poly = Polygon(p_contour)
-    
-    return body_poly
+    return poly
