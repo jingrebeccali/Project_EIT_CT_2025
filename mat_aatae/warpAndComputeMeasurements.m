@@ -17,7 +17,7 @@ function warpedResults = warpAndComputeMeasurements(...
   edges_ref= S_ref.edges;
 
   % électrodes + pattern courant
-  E_ref = generateElectrodesSurfaces(g_ref, edges_ref, n_el, L);
+  %%E_ref = generateElectrodesSurfaces(g_ref, edges_ref, n_el, L);
   M     = eye(n_el) - circshift(eye(n_el), [0,n_el/2]);
   injV  = M(:);
 
@@ -56,18 +56,18 @@ function warpedResults = warpAndComputeMeasurements(...
     gB    = S.g(:,1:2);
     HB    = S.H + 1;
     sigB  = S.sigma;
-    edB   = S.edges;
+    edB   = S.edges+1;
     znum  = S.z- S.z_min;
-
+    
     % 4.2) TPS align + warp
     [~, bndB] = extract_ordered_boundary(gB, edB);
     src       = resample_contour_by_arclength(bndB, Ncontour);
     [src_a,~,~] = align_contours(src, dst);
     tps       = ThinPlateSpline2D().fit(src_a, dst);
     nodesW    = tps.transform(gB);
-
+    E = generateElectrodesSurfaces(nodesW,edB,n_el,L);
     % 4.3) Solveur CEM
-    fmeshW    = ForwardMesh1st(nodesW, HB, E_ref);
+    fmeshW    = ForwardMesh1st(nodesW, HB, E);
     solverW   = EITFEM(fmeshW);
     solverW.mode = 'current';
     solverW.Iel  = injV;
@@ -95,7 +95,7 @@ function warpedResults = warpAndComputeMeasurements(...
   subsDone = unique({warpedResults.subject});
   for i = 1:numel(subsDone)
     cnt = sum(strcmp({warpedResults.subject}, subsDone{i}));
-    fprintf('allo');
+    
   end
 end
 
