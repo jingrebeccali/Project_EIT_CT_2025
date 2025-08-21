@@ -4,6 +4,10 @@ addpath(genpath('C:\Program Files\distmesh-master'))       % To adapt
 addpath(genpath('C:\Program Files\OOEIT-main'))      
 addpath(genpath('C:\Users\boulette\Desktop\Depot2\Project_EIT_CT_2025\mat_aatae'))
 
+%%    %%%%%%%%%%  Parallel computing Toolbox nécessaire pour ce driver, sinon en séquentiel %%%%%%%
+% go 'Home' then 'Add-Ons' then type ' Parallel computing Toolbox' then
+% install.
+%%
 
 
 baseFolder  = 'meshes_mat_sujetss';   %To adapt
@@ -143,8 +147,6 @@ for i=1:numel(subjectsF)
 end
 
 %%    %%%%%%%%%%  Parallel computing Toolbox nécessaire pour ce calcule, sinon en séquentiel %%%%%%%
-% go 'Home' then 'Add-Ons' then type ' Parallel computing Toolbox' then
-% install.
 
 
 % line 160 choses the number of workers to define on which the next calcul
