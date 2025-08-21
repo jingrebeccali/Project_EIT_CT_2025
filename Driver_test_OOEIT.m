@@ -457,7 +457,6 @@ set(h2, 'facecolor','interp', 'facealpha',0.6, 'edgecolor','none');
 axis equal off; grid on; view(2);
 title(sprintf('sig intitial : sig averge on %d subjects, each %d slices',NN,NslicePerZone));
 caxis([cmin cmax]);   % same limits
-% 4) one colorbar on the right, spanning both
 
 
 ax3 = subplot(4,1,3);
@@ -483,9 +482,9 @@ legend('signal for Sig real','signal for initial sigma: averge sigma','signal fo
 
 TVPrior = PriorTotalVariation(g_ref, H_ref,100000);
 invSolver = SolverGN({ solver; TVPrior });
-invSolver.maxIter =1;            % a handful of GN steps
-invSolver.eStep   = 1e-6;
-invSolver.eStop   = 1e-6;
+invSolver.maxIter =1;             %one GN iteration
+invSolver.eStep   = 1e-6; % step-size tolerance (mostly irrelevant with maxIter=1)
+invSolver.eStop   = 1e-6;  % objective tolerance
 invSolver.plotIterations = true;
 solver.Iel = M(:);
 solver.Uel = Umeas_ref;
@@ -494,14 +493,14 @@ plotter = Plotter(g_ref, H_ref);
 invSolver.plotter = plotter;
 
 
-invSolver.maxIterInLine = 70;
+invSolver.maxIterInLine = 70; % allow up to 70 backtracking steps within the GN step 
 N       = numel(sig_real);
 onesSig = ones(N,1);
 U1      = solver.SolveForwardVec(onesSig); 
 
 
 
-rho_b   = (U1'*Umeas_ref)/(U1'*U1);
+rho_b   = (U1'*Umeas_ref)/(U1'*U1);% best constant resistivity ρ_b (according to the paper)
 
 %U1 = U1(mask);
 
@@ -594,7 +593,7 @@ F = scatteredInterpolant(nodesW(:,1), nodesW(:,2), sig_ref_1, ...
 % 
 sigma_rand = F(g_ref(:,1), g_ref(:,2));
 
-%%  Inverse problem with random staring slice
+%%  Inverse problem with random staring slice (same as NOSER) 
 
 TVPrior = PriorTotalVariation(g_ref, H_ref,1000);
 invSolver = SolverGN({ solver; TVPrior });
