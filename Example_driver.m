@@ -19,22 +19,24 @@ L=3.5;                     %% en Cm
 %% charge reference 
 
 fn      = sprintf('%s_mesh_slice_%d.mat', refSubject, refSliceNum);
-S    = load(fullfile(baseFolder,refSubject,fn), 'g','H','sigma','edges','z','present_organs');
+S    = load(fullfile(baseFolder,refSubject,fn), 'g','H','sigma','edges','z','present_organs','mask');
 
 g_ref    = S.g;      H_ref = S.H+1;        % +1 because of python indexation is  0-based  
 sig_ref  = S.sigma;  edges_ref=S.edges+1;
 z_ref = double(S.z);
+Sig_real = Sig_update(S.present_organs,sig_ref);
 
 % 
 if size(g_ref,2)>2
   g_ref = g_ref(:,1:2);      %get x,y only  from mesh.nodes of pyeit
 end
+
 %% electrodes placement
  
 E= generateElectrodesSurfaces(g_ref,edges_ref, n_el, L);
 
 
-%%
+%%  Plot with electrodes
 figure;
 plotMeshAndElectrodes(g_ref,H_ref,sig_ref,E)
 
@@ -78,16 +80,25 @@ end
 
 E_1= generateElectrodesSurfaces(g_ref_1,edges_ref_1, n_el, L);
 
+% Exctratinhg boundary points of the two meshes 
 Ncontour = 400;
-[~, bnd_pts_A] = extract_ordered_boundary(g_ref, edges_ref);
+[~, bnd_pts_A] = extract_ordered_boundary(g_ref, edges_ref); 
 dst = resample_contour_by_arclength(bnd_pts_A, Ncontour);
 
-[~, bndB] = extract_ordered_boundary(g_ref_1, edges_ref_1);
+[~, bndB] = extract_ordered_boundary(g_ref_1, edges_ref_1); 
 src       = resample_contour_by_arclength(bndB, Ncontour);
 
+%%% align the two set of points,to avoid orientation problems
+
 [src_a,~,~] = align_contours(src, dst);
+%%% find the transformation operator that goes from the boundary
+%%% nodes of the mesh considered to the ref mesh
 tps       = ThinPlateSpline2D().fit(src_a, dst);
+%%% now maps all the nodes of the mesh considered via the that
+%%% opearator 
 nodesW    = tps.transform(g_ref_1(:,1:2));
+
+%%% generetae electrodes surfaces for the new mesh(just for plot)
 E_11= generateElectrodesSurfaces(nodesW,edges_ref_1, n_el, L);
 
 %%
@@ -95,13 +106,13 @@ E_11= generateElectrodesSurfaces(nodesW,edges_ref_1, n_el, L);
 figure;
 subplot(3,1,1)
 plotMeshAndElectrodes(g_ref_1,H_ref_1,sig_ref_1,E_1)
-
+title('source mesh')
 subplot(3,1,2)
 plotMeshAndElectrodes(g_ref,H_ref,sig_ref,E)
 
+title('destination mesh')
 
 subplot(3,1,3)
 
 plotMeshAndElectrodes(nodesW,H_ref_1,sig_ref_1,E_1)
-
-%%
+title('result')
