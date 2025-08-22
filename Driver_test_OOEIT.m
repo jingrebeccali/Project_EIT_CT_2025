@@ -175,9 +175,14 @@ dq = parallel.pool.DataQueue;
 
 warpedResults = warpAndComputeMeasurements( ...
                baseFolder, results, refSubject, refSliceNum, Ncontour,n_el,L,dq);
-delete(gcp('nocreate'));
 
 elapsed = toc;         
+
+%%%% If the next line gives you an error, that means you were on
+%%%% sequential., but the calculations were done so just ignore it and go to the next section
+delete(gcp('nocreate'));
+
+        
 
 fprintf('%d slices par sujet sont transformées au contour de la slice de référence et sont résolues',NslicePerZone)
 fprintf('Elapsed time: %.4f seconds\n', elapsed);
@@ -226,6 +231,9 @@ grid on;
 
 colorbar; view(2);
 
+%%% compute mean and std per channel, on selected slices.
+
+tab = zeros(count,numel(Umeas_ref));
 
 for i = 1:count
     idx    = bestIdx(i);
@@ -241,7 +249,8 @@ for i = 1:count
     if size(g,2) > 2
         g = g(:,1:2);
     end
-
+    % struct to calculate mean per measurment channel later
+    tab(i,:) = warpedResults(idx).Imeas_wrapped ; 
     %  Contour cible et rééchantillonnage
     [~, bnd_pts_B] = extract_ordered_boundary(g, edgesB);
     src = resample_contour_by_arclength(bnd_pts_B, Ncontour);
@@ -269,6 +278,25 @@ for i = 1:count
     axis equal tight;  grid on;
     colorbar; view(2);
 end
+
+
+meannn = mean(tab,1);
+stdddd = std(tab,1);
+%% plot mean and std per measurment channel, on selected slices
+figure;
+subplot(2,1,1);plot(meannn); titel("mean per measurment channel")
+subplot(2,1,2);
+
+plot(stdddd); title(' standard deviation per measurment channel ')
+%% same as previous in one plot 
+x = 1: numel(Umeas_ref);
+figure;
+errorbar(x, meannn(x), stdddd(x), 'o-', ...
+    'LineWidth', 1.2, 'MarkerSize', 6, 'CapSize', 4);
+xlabel('Measurement channel (electrode pair)');
+ylabel('Mean value (\pm std)');
+title('Mean +/- Std of EIT Measurements per Channel');
+grid on;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
