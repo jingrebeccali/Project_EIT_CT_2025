@@ -29,8 +29,6 @@ from pyeit.eit.fem    import EITForward,calculate_ke,assemble
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from Extract_skin_mask import *
-from help_functions import *
 
 from pyeit.mesh.utils import edge_list
 from pyeit.mesh import PyEITMesh

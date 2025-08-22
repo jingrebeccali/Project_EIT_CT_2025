@@ -13,8 +13,7 @@ from pyeit.mesh import PyEITMesh
 
 
 
-
-from Extract_skin_mask import *
+from CT_processing_functions import Create_mask_2D,Get_all_masks,compute_z_bounds,organs_present_in_crop
 
 
 if sys.platform.startswith("win"):
@@ -458,7 +457,7 @@ def build_and_store_meshes(
     # boundary edges
     edges=edge_list_numba(mesh_obj.element )
     
-    return mask2d, mesh_obj,edges
+    return mask2d, mesh_obj,edges ### Adapt according to what you want to return ###
 
     # print("boundary edges saved !!")
     # out_path = os.path.join(output_dir, f"{case_id}_mesh_slice_{slice_index-z_min}.pkl")
