@@ -44,6 +44,7 @@ class CEMFEM:
     def __init__(
         self,
         mesh: PyEITMesh,
+        boundary_edges: list,
         protocol: PyEITProtocol,
         ref_node: int = 0,
     ):
@@ -63,7 +64,7 @@ class CEMFEM:
         # calcul des stiffness locaux(ce terme est indéendant des electrodes)
         self.ke = calculate_ke(mesh.node, mesh.element)
         # Rrécuper  des arêtes de bord du domaine
-        self.boundary_edges = edge_list(mesh.element)
+        self.boundary_edges =boundary_edges
         # les regrouper par éléctrode
         self.electrode_edges = [
             [e for e in self.boundary_edges if mesh.el_pos[l] in e]
@@ -279,47 +280,57 @@ class CEMFEM:
         return Uall
     
         
-
-
-def scale_pyeit_mesh_to_mm(mesh, case_id, slice_index, mask2d):
+def solve_and_plot(mesh_obj,barsA, mask2d, perm, protocol, zeta_val, mode, title):
     """
-    Prend un maillage PyEIT 2D (dont les noeuds sont en [-1,1],car pyeit renvoie un mesh normalisé sur [-1,1]),
-    et le remet dans le repère réel (mm) de ton image CT.
-    
-    - mesh.node : (Nnodes,2) en coordonnées normalisées [-1,1]
-    - case_id    : pour charger ct.nii.gz et son affine
-    - slice_index: indice z de la coupe
-    - mask2d     : le masque 2D original, shape (h, w)
+    Calcule le forward pour mesh_obj, affiche le mask, le mesh et le signal,
+    et renvoie le vecteur de solution sol_all.
     """
-    # Récupère l'affine du CT
-    ct = nib.load(f"Data_set/{case_id}/ct.nii.gz")
-    affine = ct.affine  # 4×4
+    # Forward
+    solver  = CEMFEM(mesh_obj,barsA, protocol, ref_node=0)
+    sol_all = solver.solve_CEM(perm=perm,
+                               zeta=np.ones(mesh_obj.n_el) * zeta_val,
+                               mode=mode)
+
+    # Affichage
+    fig, (ax0, ax1, ax2) = plt.subplots(1, 3, figsize=(14, 5))
+    ax0.imshow(mask2d, cmap='viridis')
+    ax0.set_title(f"{title}\nMask 2D")
+    ax0.axis("off")
+
+    create_mesh_plot(
+        ax1, mesh_obj,
+        electrodes=mesh_obj.el_pos,
+        coordinate_labels="radiological",
+        marker_text_kwargs={"color": "red", "fontsize": 6}
+    )
+    ax1.set_title(f"{title}\nMesh")
+    ax1.axis("off")
+    ax1.set_aspect("equal")
+
+    ax2.plot(sol_all, '-o', markersize=4)
+    ax2.set_title(f"{title}\nSignal (Injecting {mode})")
+    ax2.set_xlabel("Index d'électrode")
+    ax2.set_ylabel("Potentiel (V)" if mode == "current" else "Courant (A)")
+    ax2.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+    return sol_all
+
+import pyeit.eit.protocol as protocol
+
+def set_protocol(n_el,dist_exc,step_meas):
+    """
+    Set the protocol for EIT measurements.
+    Returns a protocol object with the specified parameters.
     
-    h, w = mask2d.shape
+    n_el =    # Number of electrodes
+    dist_exc  # Distance between excitation electrodes
+    step_meas # Step size for measurements
 
-    #  On renverse la normalisation [-1,1] → pixel indices [0..w-1], [0..h-1]
-    #    x_norm = mesh.node[:,0] ∈ [-1,1] correspond à col
-    #    y_norm = mesh.node[:,1] ∈ [-1,1] correspond à row (inversion d'axe Y)
-    xn = mesh.node[:, 0]
-    yn = mesh.node[:, 1]
-    # colonnes pixels
-    px = (xn + 1) * 0.5 * (w - 1)
-    # lignes pixels (on a fait y = 1 - row/(h-1)*2 dans Extract_contour)
-    py = (1 - yn) * 0.5 * (h - 1)
-
-    #  Passe en coordonnées homogènes (i, j, z, 1) puis affine → (x_mm, y_mm, z_mm)
-    ones = np.ones_like(px)
-    zs   = np.full_like(px, slice_index)
-    vox4 = np.vstack([px, py, zs, ones]).T         # (Nnodes,4)
-    xyz  = vox4.dot(affine.T)[:, :3]               # (Nnodes,3)
-
-    #  Remplace node par (x_mm, y_mm)
-    mesh.node[:, 0] = xyz[:, 0]
-    mesh.node[:, 1] = xyz[:, 1]
-
-    return mesh
-
-
+    """
+    return protocol.create(n_el, dist_exc=dist_exc, step_meas=step_meas,parser_meas="std")
 
 # def view_EIT_BP(mask_eit,mesh_obj,perm0,perm):
 #         """ 
